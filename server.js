@@ -22,6 +22,10 @@ app.get("/", (req, res) => {
   res.json({ message: "Welcome to Martiixx application." });
 });
 
+//required routes
+require('./app/routes/dialogFlow.controller.js')(app);
+require('./app/routes/user.routes.js')(app);
+
 // set port, listen for requests
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
