@@ -8,7 +8,7 @@ exports.createTransaction = async (destination) => {
     });
 
     if (user.account.balance < destination.amount) {
-        return 'Saldo insuficiente para completar la transacción.'
+        return 'No posees el saldo suficiente para completar la transacción.'
     }
 
     const transaction = {

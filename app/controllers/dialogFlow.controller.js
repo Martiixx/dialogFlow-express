@@ -83,9 +83,12 @@ async function executeSingleQuery(projectId, sessionId, query, languageCode) {
                 }
                 let transfer = await UserController.createTransaction(destination);
                 console.log(transfer);
-                file = generatePdf(transfer);
-                return {response: 'Transferencia realizada con éxito.', file: file.filename}
-
+                if (typeof transfer === 'string') { // not enough cash
+                    return transfer;
+                }
+                let file = await generatePdf(transfer);
+                console.log(file);
+                return {response: 'Transferencia realizada con éxito.', file: file}
             }
         }
     } catch (error) {
@@ -95,16 +98,10 @@ async function executeSingleQuery(projectId, sessionId, query, languageCode) {
 }
 
 exports.startDialog = async (req, res) => {
+    console.log(req.query[0]);
     const projectId = 'agentebanco-gdrm';
     const sessionId = '12345';
-    const query = 'Hola, quiero saber el valor del dolar'; /* req.params.message; */
-    const queries = [
-        'Hola, quiero enviar dinero',
-        'Banco estado',
-        'cuenta rut',
-        56899,
-        100,
-    ]
+    const query = req.query[0]; /* req.params.message; */
     const languageCode = 'es';
 
     let response = await executeSingleQuery(projectId, sessionId, query, languageCode);
@@ -148,11 +145,11 @@ function generatePdf(transfer) {
         <p>Fecha: ${new Date()}</p>
     `;
 
-    return pdf.create(content).toFile('./Transferencia' + Math.floor(Math.random() * 1000) + '.pdf', function (err, res){
+    return pdf.create(content).toFile('./Transferencia' + Math.floor(Math.random() * 1000) + '.pdf',(err, res) => {
         if (err) {
             console.log(err);
         } else {
-            console.log(res);
+            return res.filename;
         }
     });
 }
