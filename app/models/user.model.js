@@ -1,12 +1,15 @@
 module.exports = mongoose => {
     const Schema = mongoose.Schema;
 
-    const Transfer = mongoose.model("transfer",
+    const Transfer = mongoose.model("transfers",
         mongoose.Schema({
                 initial_balance: Number,
                 final_balance: Number,
                 amount: Number,
                 cod_auth: String,
+                destination_bank: String,
+                account_type: String,
+                account_number: Number
             },
             {
                 timestamps: true

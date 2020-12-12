@@ -2,45 +2,76 @@ const db = require("../models");
 const User = db.user;
 const https = require('https');
 
-exports.createTransaction = (req, res) => {
-    if (!req.params.amount) {
-        res.status(400).send({message: "Content cannot be empty"})
-    }
+exports.createTransaction = async (destination) => {
+    let user = await User.findOne().then(data => {
+        return data;
+    });
 
-    let user = User.findOne().sort({created_at: -1}).exec();
-
-    if ((user.account.balance - req.params.amount) < 0) {
-        res.status(400).send({message: ""});
+    if (user.account.balance < destination.amount) {
+        return 'Saldo insuficiente para completar la transacción.'
     }
 
     const transaction = {
         initial_balance: user.account.balance,
-        final_balance: user.account.balance - req.params.amount,
-        amount: req.params.amount,
+        final_balance: user.account.balance - destination.amount,
+        amount: destination.amount,
         cod_auth: 'authorization-code',
+        account_type: destination.account_type,
+        account_number: destination.account_number,
+        destination_bank: destination.destination_bank,
     }
 
-    user.account.transfer.push(transaction);
+    user.account.transfers.push(transaction);
+    user.account.balance = transaction.final_balance;
     user.save().then(data => {
-        res.send(data);
+        return data;
     }).catch(err => {
-        res.status(500).send({message: err.message || "Error ocurred trying to save the transaction"});
+        return 'Error al procesar la solicitud:' + err;
+    });
+
+    return transaction;
+}
+
+// exports.getUserData = (req, res) => {
+//     let user = User.findOne().then(data => {
+//         console.log(data);
+//         res.status(200).send(data);
+//     }).catch(err => {
+//         res.status(500).send({message: err.message || "Error ocurred trying to get the user"});
+//     });
+// }
+
+exports.initUser = (req, res) => {
+    const user = new User({
+        name: 'Martin',
+        rut: '11.111.111-1',
+        password: 'password',
+        mail: 'mail@mail.cl',
+        account: {
+            account_number: 123,
+            balance: 120000,
+            transfers: {
+                initial_balance: 125000,
+                final_balance: 120000,
+                amount: 5000,
+                cod_auth: 'Authorization-code',
+                destination_bank: 'Banco Estado',
+                account_type: 'Cuenta vista',
+                account_number: 555555,
+            }
+        }
+    });
+
+    user.save(user).then(data => {
+        console.log('User created.');
+        res.status(200).send(data);
+    }).catch(error => {
+        console.log(JSON.stringify(error));
+        res.status(500).send(error);
     });
 }
 
-exports.getUserData = (req, res) => {
-    let user = User.findOne().sort({created_at: -1}).then(data => {
-        res.send(data);
-    }).catch(err => {
-        res.status(500).send({message: err.message || "Error ocurred trying to get the user"});
-    });
-}
-
-exports.getTransactionPdf = (req, res) => {
-
-}
-
-exports.getIndicators = (req, res) => {
+exports.getIndicators = async () => {
     https.get('https://mindicador.cl/api', (response) => {
         response.setEncoding('utf-8');
         let data = '';
@@ -54,10 +85,19 @@ exports.getIndicators = (req, res) => {
                 uf: parsedData.uf.valor,
                 utm: parsedData.utm.valor,
                 dolar: parsedData.dolar.valor,
+                euro: parsedData.euro.valor,
             }
-            res.send(responseData);
+            return responseData;
         })
     }).on('error', (err) => {
         res.status(500).send({message: "Error retrieving data from mindicador.cl"});
     })
+}
+
+exports.getUserData = () => {
+    return User.findOne().then(data => {
+        return data;
+    }).catch(err => {
+        return err;
+    });
 }

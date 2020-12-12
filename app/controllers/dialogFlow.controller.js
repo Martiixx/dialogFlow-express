@@ -1,5 +1,9 @@
 const dialogflow = require('@google-cloud/dialogflow');
 const uuid = require('uuid');
+const UserController = require('./user.controller.js');
+const https = require('https');
+const pdf = require('html-pdf');
+
 
 async function detectIntent(
     projectId,
@@ -36,41 +40,119 @@ async function detectIntent(
     return responses[0];
 }
 
-async function executeQueries(projectId, sessionId, queries, languageCode) {
-    // Keeping the context across queries let's us simulate an ongoing conversation with the bot
+async function executeSingleQuery(projectId, sessionId, query, languageCode) {
     let context;
     let intentResponse;
-    for (const query of queries) {
-        try {
-            console.log(`Sending Query: ${query}`);
-            intentResponse = await detectIntent(
-                projectId,
-                sessionId,
-                query,
-                context,
-                languageCode
-            );
-            console.log('Detected intent');
-            console.log(
-                `Fulfillment Text: ${intentResponse.queryResult.fulfillmentMessages}`
-            );
-            let response = intentResponse.queryResult;
-            console.log(JSON.stringify(response));
-            // Use the context from this response for next queries
-            context = intentResponse.queryResult.outputContexts;
-        } catch (error) {
-            console.log(error);
+    try {
+        console.log(`Sending Query: ${query}`);
+        intentResponse = await detectIntent(
+            projectId,
+            sessionId,
+            query,
+            context,
+            languageCode
+        );
+        console.log('Detected intent');
+        console.log(
+            `Fulfillment Text: ${intentResponse.queryResult.fulfillmentMessages}`
+        );
+        let response = intentResponse.queryResult.fulfillmentMessages[0];
+        console.log(JSON.stringify(response));
+        console.log(response['text']) // response conversation
+        console.log(response['payload']) // response action
+        if (response['text'] !== undefined) {
+            let message = response['text'];
+            return message.text[0]; // return content of text object
+        } else if (response['payload'] !== undefined) {
+            let action = response['payload'].fields.action.stringValue;
+            if (action === 'getUserData') {
+                console.log('in')
+                return await UserController.getUserData().then(data => {
+                    return 'Su saldo en la cuenta es $' + data.account.balance
+                });
+            } else if (action === 'getIndicadores') {
+                let data = await getIndicadores();
+                return 'Los valores del dia son ' + data;
+            } else if (action === 'createTransaction') {
+                let parameters = intentResponse.queryResult.parameters.fields;
+                let destination = {
+                    account_type: parameters.account_type.stringValue,
+                    destination_bank: parameters.destination_bank.stringValue,
+                    account_number: parameters.account_number.numberValue,
+                    amount: parameters.amount.numberValue
+                }
+                let transfer = await UserController.createTransaction(destination);
+                console.log(transfer);
+                file = generatePdf(transfer);
+                return {response: 'Transferencia realizada con éxito.', file: file.filename}
+
+            }
         }
+    } catch (error) {
+        console.log(error);
+        return 'Ha ocurrido un error al procesar la información. intente nuevamente';
     }
 }
 
-exports.startDialog = () => {
+exports.startDialog = async (req, res) => {
     const projectId = 'agentebanco-gdrm';
     const sessionId = '12345';
+    const query = 'Hola, quiero saber el valor del dolar'; /* req.params.message; */
     const queries = [
         'Hola, quiero enviar dinero',
+        'Banco estado',
+        'cuenta rut',
+        56899,
+        100,
     ]
     const languageCode = 'es';
 
-    executeQueries(projectId, sessionId, queries, languageCode);
+    let response = await executeSingleQuery(projectId, sessionId, query, languageCode);
+    // executeQueries(projectId, sessionId, queries, languageCode);
+    res.status(200).send({message: response});
+}
+
+function getIndicadores() {
+    https.get('https://mindicador.cl/api', (response) => {
+        response.setEncoding('utf-8');
+        let data = '';
+
+        response.on('data', (chunk) => {
+            data += chunk;
+        });
+        let responseData = '';
+        response.on('end', () => {
+            let parsedData = JSON.parse(data);
+            responseData = {
+                uf: parsedData.uf.valor,
+                utm: parsedData.utm.valor,
+                dolar: parsedData.dolar.valor,
+                euro: parsedData.euro.valor,
+            }
+            console.log(JSON.stringify(responseData));
+        })
+        return responseData;
+    }).on('error', (err) => {
+        return err;
+     })
+}
+
+function generatePdf(transfer) {
+    const content = `
+        <h1> Transferencia Bancaria </h1>
+        <p>Banco de destino: ${transfer.destination_bank}</p>
+        <p>Cuenta de destino: ${transfer.account_number}</p>
+        <p>Tipo de cuenta: ${transfer.account_type}</p>
+        <p>Monto: ${transfer.amount}</p>
+        <p>Codigo Autorizacion: ${transfer.cod_auth}</p>
+        <p>Fecha: ${new Date()}</p>
+    `;
+
+    return pdf.create(content).toFile('./Transferencia' + Math.floor(Math.random() * 1000) + '.pdf', function (err, res){
+        if (err) {
+            console.log(err);
+        } else {
+            console.log(res);
+        }
+    });
 }
